@@ -36,7 +36,7 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 					results <- WorkResult{Item: Item{}, Err: err}
 				}
 				//only take new threads
-				if dataMap.Parent != 0 || dataMap.Dead || (dataMap.Text == "" && dataMap.Title == "") {
+				if dataMap.Parent != 0 || dataMap.Dead || (dataMap.Text == "" && dataMap.Title == "" && dataMap.Url == "") {
 					// log.Printf("Worker %d ignoriert Job %d - Child[%v] Dead[%v]", workerId, jobId, dataMap.Parent != 0, dataMap.Dead)
 					continue
 				}
