@@ -17,7 +17,7 @@ import (
 
 var (
 	WORKERCOUNT         = 10
-	OLDARTICLELOADCOUNT = 2000
+	OLDARTICLELOADCOUNT = 5000
 	MINARTICLE          = 200
 	// Alle X Minuten die Datenstruktur im Speicher verkleinern
 	HALVEMEMORYDURATION = 1800
@@ -47,43 +47,48 @@ func main() {
 	}
 
 	var mu sync.RWMutex
+	var watermarkmu sync.RWMutex
 	var hackerNewsItems []*internal.Item
-	var watermark int = -1
 	articleInputChan := make(chan int, WORKERCOUNT)
 	defer close(articleInputChan)
 	log.Println("Starte Hackernews Fetcher")
 	//Todo in den Fetcher bringen
 	ctx := context.Background()
 	f := internal.NewFetcher(WORKERCOUNT)
+	//Starte MCP Server
 	latestId, err := f.NewestArticleID()
 	if err != nil {
 		log.Println(err)
 	}
-	watermark = latestId
-	//Starte MCP Server
+	watermarkmu.Lock()
+	watermark := latestId - OLDARTICLELOADCOUNT
+	watermarkmu.Unlock()
 	go func() {
 		internal.RunHackernewsMcp(&hackerNewsItems, &mu)
 	}()
 
 	go func() {
 		//Alte Artikel laden
-		waterMarkTicker := time.NewTicker(time.Second * 1)
+		waterMarkTicker := time.NewTicker(time.Second * 5)
 		itemShowTimer := time.NewTicker(time.Second * 15)
 		inHalfCutTimer := time.NewTicker(time.Minute * time.Duration(HALVEMEMORYDURATION))
-		for aid := watermark; aid > watermark-OLDARTICLELOADCOUNT; aid-- {
-			articleInputChan <- aid
-		}
 		for {
 			select {
 			case <-ctx.Done():
 				log.Println("Beende Applikation")
 				return
 			case <-waterMarkTicker.C:
-				latestId, _ := f.NewestArticleID()
-				for aid := latestId; aid > watermark; aid-- {
+				latestId, err := f.NewestArticleID()
+				if err != nil {
+					continue
+				}
+				watermarkmu.Lock()
+				for aid := watermark + 1; aid <= latestId; aid++ {
 					articleInputChan <- aid
 				}
 				watermark = latestId
+				watermarkmu.Unlock()
+				// log.Printf("Old watermark: %d New watermark: %d", watermark, latestId)
 			case <-itemShowTimer.C:
 				var articleCount int
 				mu.RLock()
@@ -132,7 +137,9 @@ func main() {
 
 	//Watermark, fürs Polling, keine Lust auf SSE
 	http.HandleFunc("/api/watermark", func(w http.ResponseWriter, r *http.Request) {
+		watermarkmu.RLock()
 		data, err := json.Marshal(watermark)
+		watermarkmu.Unlock()
 		if err != nil {
 			log.Println(err)
 		}

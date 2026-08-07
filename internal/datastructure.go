@@ -17,6 +17,7 @@ type Item struct {
 	Time     int64  `json:"time"`
 	Title    string `json:"title"`
 	Text     string `json:"text"`
+	Type     string `json:"type"`
 	By       string `json:"by"`
 	Kids     []int  `json:"kids"`
 	Url      string `json:"url"`

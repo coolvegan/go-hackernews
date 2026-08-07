@@ -69,6 +69,9 @@ func (f *Fetcher) FetchFoo(articleInputChan <-chan int) <-chan *Item {
 	}()
 	go func() {
 		for wr := range f.results {
+			if wr.Err != nil {
+				log.Println(wr.Err)
+			}
 			res <- &wr.Item
 		}
 	}()

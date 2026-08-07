@@ -11,7 +11,7 @@ func (f *Fetcher) worker(id int, jobs <-chan int, results chan<- WorkResult) {
 		dataMap, err := fetch(jobId, f.itemsUri)
 		if err != nil {
 			log.Println(err)
-			results <- WorkResult{Item: Item{}, Err: err}
+			continue
 		}
 		if f.downloadComments {
 			go f.fetchComments(dataMap, f.itemsUri, &wg)
@@ -33,11 +33,11 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 				dataMap, err := fetch(jobId, f.itemsUri)
 				if err != nil {
 					log.Println(err)
-					results <- WorkResult{Item: Item{}, Err: err}
+					continue
 				}
 				//only take new threads
-				if dataMap.Parent != 0 || dataMap.Dead || (dataMap.Text == "" && dataMap.Title == "" && dataMap.Url == "") {
-					// log.Printf("Worker %d ignoriert Job %d - Child[%v] Dead[%v]", workerId, jobId, dataMap.Parent != 0, dataMap.Dead)
+				if dataMap.Parent != 0 || dataMap.Dead || dataMap.Id == 0 {
+					// log.Printf("Worker %d ignoriert Job %d - Child[%v] Dead[%v] ZeroId[%v]", workerId, jobId, dataMap.Parent != 0, dataMap.Dead, dataMap.Id == 0)
 					continue
 				}
 				if f.downloadComments {
@@ -45,7 +45,7 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 					f.fetchComments(dataMap, f.itemsUri, &wg)
 				}
 				wg.Wait()
-				// log.Printf("Worker %d arbeitete erfolgreich für ItemID %d.\n", workerId, jobId)
+				log.Printf("Worker %d arbeitete erfolgreich für ItemID %d.\n", workerId, jobId)
 				results <- WorkResult{Item: *dataMap, Err: err}
 
 			}
