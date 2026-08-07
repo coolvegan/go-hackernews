@@ -22,12 +22,17 @@ var (
 	// Alle X Minuten die Datenstruktur im Speicher verkleinern
 	HALVEMEMORYDURATION = 1800
 	SERVER              = fmt.Sprintf("localhost:7777")
+	MCPSERVER           = fmt.Sprintf("localhost:13333")
 )
 
 func main() {
 	srv := os.Getenv("SERVER")
 	if srv != "" {
 		SERVER = srv
+	}
+	mcpserver := os.Getenv("MCPSERVER")
+	if mcpserver != "" {
+		MCPSERVER = mcpserver
 	}
 
 	workercount := os.Getenv("WORKERCOUNT")
@@ -64,7 +69,7 @@ func main() {
 	watermark := latestId - OLDARTICLELOADCOUNT
 	watermarkmu.Unlock()
 	go func() {
-		internal.RunHackernewsMcp(&hackerNewsItems, &mu)
+		internal.RunHackernewsMcp(MCPSERVER, &hackerNewsItems, &mu)
 	}()
 
 	go func() {

@@ -41,7 +41,7 @@ go run main.go
 Optionally with custom values:
 
 ```bash
-SERVER=localhost:8080 WORKERCOUNT=20 go run main.go
+SERVER=localhost:8080 MCPSERVER=localhost:13333 WORKERCOUNT=20 go run main.go
 ```
 
 ## systemd service
@@ -72,6 +72,7 @@ RestartSec=5
 
 # Environment variables (optional, defaults see above)
 Environment=SERVER=localhost:7777
+Environment=MCPSERVER=localhost:13333
 Environment=WORKERCOUNT=10
 Environment=HALFTIME=1800
 Environment=PRELOADITEMS=2000

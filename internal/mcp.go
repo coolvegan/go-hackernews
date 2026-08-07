@@ -3,11 +3,13 @@ package internal
 import (
 	"context"
 	"encoding/json"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"fmt"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 type HackernewsMcp struct {
@@ -15,18 +17,18 @@ type HackernewsMcp struct {
 	data []*Item
 }
 
-func RunHackernewsMcp(data *[]*Item, lock *sync.RWMutex) *HackernewsMcp {
+func RunHackernewsMcp(mcpserver string, data *[]*Item, lock *sync.RWMutex) *HackernewsMcp {
 	s := server.NewMCPServer(
 		"Hackernews Server",
 		"0.0.1",
 		server.WithTaskCapabilities(true, true, true),
 		server.WithMaxConcurrentTasks(10), // Allow up to 10 concurrent running tasks
 	)
-	initialize(s, data, lock)
+	initialize(s, mcpserver, data, lock)
 	return &HackernewsMcp{s: s}
 }
 
-func initialize(s *server.MCPServer, data *[]*Item, lock *sync.RWMutex) {
+func initialize(s *server.MCPServer, mcpserver string, data *[]*Item, lock *sync.RWMutex) {
 	hackernewsTool := mcp.NewTool("hackernews",
 		mcp.WithDescription("See the newest entries / articles at hackernews"),
 		mcp.WithString("filter",
@@ -91,12 +93,12 @@ func initialize(s *server.MCPServer, data *[]*Item, lock *sync.RWMutex) {
 		}
 		return mcp.NewToolResultText(string(res)), nil
 	})
-	sseServer := server.NewSSEServer(s, server.WithBaseURL("http://localhost:13333"))
+	sseServer := server.NewSSEServer(s, server.WithBaseURL(fmt.Sprintf("%s", mcpserver)))
 
-	log.Println("MCP SSE-Server is running on http://localhost:13333/sse")
+	log.Printf("MCP SSE-Server is running on %s\n", mcpserver)
 
 	// 2. Start() registriert die Routen UND startet den HTTP-Server auf dem Port
-	if err := sseServer.Start(":13333"); err != nil {
+	if err := sseServer.Start(fmt.Sprintf("%s", mcpserver)); err != nil {
 		log.Fatalf("Server-Error: %v", err)
 	}
 }
