@@ -3,11 +3,11 @@ package internal
 import (
 	"context"
 	"encoding/json"
-	"log"
-	"sync"
-
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"log"
+	"sync"
+	"time"
 )
 
 type HackernewsMcp struct {
@@ -32,25 +32,39 @@ func initialize(s *server.MCPServer, data *[]*Item, lock *sync.RWMutex) {
 		mcp.WithString("filter",
 			mcp.Required(),
 			mcp.Description("Filter the data. (full, summary"), mcp.Enum("full", "summary")),
+		mcp.WithNumber("minScore",
+			mcp.Description("Min-Score; Article with lower Scores get filtered out")),
+		mcp.WithNumber("maxAgeMinutes",
+			mcp.Description("Max Age in Minutes; Older Articles are filtered out")),
 	)
 	hackernewsToolCount := mcp.NewTool("hackernewsArticleCount",
 		mcp.WithDescription("See the available article count of hacker news"),
 	)
 	s.AddTool(hackernewsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		lock.RLock()
-		res, err := json.Marshal(*data)
-		lock.RUnlock()
-		if err != nil {
-			return nil, err
-		}
 		filter, err := request.RequireString("filter")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
+		minScore := request.GetInt("minScore", 0)
+		maxAgeMinutes := request.GetInt("maxAgeMinutes", 0)
+		lock.RLock()
+		filtered := make([]*Item, 0, len(*data))
+		now := time.Now()
+		for _, d := range *data {
+			if d.Score < minScore {
+				continue
+			}
+			if maxAgeMinutes > 0 && now.Sub(d.Created()) > time.Duration(maxAgeMinutes)*time.Minute {
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		lock.RUnlock()
+
 		switch filter {
 		case "summary":
-			summary := make([]ArticleSummary, 0, len(*data))
-			for _, d := range *data {
+			summary := make([]ArticleSummary, 0, len(filtered))
+			for _, d := range filtered {
 				summary = append(summary, ArticleSummary{Title: d.Title, Text: d.Text, Url: d.Url, Score: d.Score})
 			}
 			res, err := json.Marshal(summary)
@@ -59,10 +73,14 @@ func initialize(s *server.MCPServer, data *[]*Item, lock *sync.RWMutex) {
 			}
 			return mcp.NewToolResultText(string(res)), nil
 		case "full":
+			res, err := json.Marshal(filtered)
+			if err != nil {
+				return nil, err
+			}
 			return mcp.NewToolResultText(string(res)), nil
+		default:
+			return mcp.NewToolResultError("unknown filter: " + filter), nil
 		}
-		return nil, err
-
 	})
 	s.AddTool(hackernewsToolCount, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		lock.RLock()
@@ -75,10 +93,10 @@ func initialize(s *server.MCPServer, data *[]*Item, lock *sync.RWMutex) {
 	})
 	sseServer := server.NewSSEServer(s, server.WithBaseURL("http://localhost:13333"))
 
-	log.Println("MCP SSE-Server läuft unter http://localhost:13333/sse")
+	log.Println("MCP SSE-Server is running on http://localhost:13333/sse")
 
 	// 2. Start() registriert die Routen UND startet den HTTP-Server auf dem Port
 	if err := sseServer.Start(":13333"); err != nil {
-		log.Fatalf("Server-Fehler: %v", err)
+		log.Fatalf("Server-Error: %v", err)
 	}
 }

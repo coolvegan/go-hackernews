@@ -1,4 +1,4 @@
-module gittea.kittel.dev/marco/go-news
+module github.com/coolvegan/go-hackernews
 
 go 1.26.5
 

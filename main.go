@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"gittea.kittel.dev/marco/go-news/internal"
+	"github.com/coolvegan/go-hackernews/internal"
 )
 
 var (
@@ -51,7 +51,7 @@ func main() {
 	var hackerNewsItems []*internal.Item
 	articleInputChan := make(chan int, WORKERCOUNT)
 	defer close(articleInputChan)
-	log.Println("Starte Hackernews Fetcher")
+	log.Println("Starting Hackernews Fetcher")
 	//Todo in den Fetcher bringen
 	ctx := context.Background()
 	f := internal.NewFetcher(WORKERCOUNT)
@@ -75,7 +75,7 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Beende Applikation")
+				log.Println("Ending Application")
 				return
 			case <-waterMarkTicker.C:
 				latestId, err := f.NewestArticleID()
@@ -94,7 +94,7 @@ func main() {
 				mu.RLock()
 				articleCount = len(hackerNewsItems)
 				mu.RUnlock()
-				log.Printf("%d Artikel von Hackernews im Speicher.\n", articleCount)
+				log.Printf("%d Article from Hackernews in Memory.\n", articleCount)
 			case <-inHalfCutTimer.C:
 				mu.Lock()
 				if len(hackerNewsItems) >= MINARTICLE {
@@ -109,7 +109,7 @@ func main() {
 	}()
 	//Hauptdatenstruktur füllen. Diese wird auch vom Web und Mcp Server genutzt
 	go func() {
-		log.Println("Initialer Fetch gestartet.")
+		log.Println("Initial Fetch started.")
 		res := f.FetchFoo(articleInputChan)
 		for r := range res {
 			mu.Lock()
@@ -147,6 +147,6 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, string(data))
 	})
-	log.Printf("Starte DEBUG-Server auf Port %v", SERVER)
+	log.Printf("Starting DEBUG-Server on Port %v", SERVER)
 	log.Fatalln(http.ListenAndServe(SERVER, nil))
 }

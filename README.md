@@ -1,36 +1,36 @@
 # go-news
 
-Ein Go-Service, der Artikel von [Hacker News](https://news.ycombinator.com/) fetcht, im Speicher vorhält und über eine HTTP-API sowie einen MCP-Server bereitstellt.
+A Go service that fetches articles from [Hacker News](https://news.ycombinator.com/), keeps them in memory, and exposes them via an HTTP API and an MCP server.
 
-## Funktionsweise
+## How it works
 
-- Beim Start wird die aktuellste Artikel-ID (Watermark) von Hacker News ermittelt.
-- Anschließend werden ältere Artikel (default `2000`) nachgeladen.
-- Ein Ticker pollt sekündlich nach neuen Artikeln und fügt diese hinzu.
-- Alle `HALVEMEMORYDURATION` Minuten (default `30`) wird die In-Memory-Datenstruktur halbiert, um den Speicherverbrauch zu begrenzen (mindestens `MINARTICLE` Artikel bleiben erhalten).
-- Die Artikel werden über Worker (`WORKERCOUNT`, default `10`) parallel gefetcht.
+- On startup, the most recent article ID (watermark) is fetched from Hacker News.
+- Older articles are then loaded (default `2000`).
+- A ticker polls for new articles every second and adds them.
+- Every `HALVEMEMORYDURATION` minutes (default `30`), the in-memory data structure is halved to limit memory usage (at least `MINARTICLE` articles are kept).
+- Articles are fetched in parallel by workers (`WORKERCOUNT`, default `10`).
 
-## Konfiguration (Umgebungsvariablen)
+## Configuration (environment variables)
 
-| Variable          | Default       | Beschreibung                                           |
-|-------------------|---------------|--------------------------------------------------------|
-| `SERVER`          | `localhost:7777` | Adresse des HTTP-Debug-Servers                       |
-| `WORKERCOUNT`     | `10`          | Anzahl paralleler Fetch-Worker                          |
-| `HALFTIME`        | `1800` (Sekunden → 30 Min) | Intervall (Minuten) zum Halbieren des Speichers |
-| `PRELOADITEMS`    | `2000`        | Anzahl der initial zu ladenden älteren Artikel          |
+| Variable          | Default       | Description                                              |
+|-------------------|---------------|----------------------------------------------------------|
+| `SERVER`          | `localhost:7777` | Address of the HTTP debug server                       |
+| `WORKERCOUNT`     | `10`          | Number of parallel fetch workers                          |
+| `HALFTIME`        | `1800` (seconds → 30 min) | Interval (minutes) for halving memory             |
+| `PRELOADITEMS`    | `2000`        | Number of older articles to load initially                |
 
-## HTTP-Endpunkte
+## HTTP endpoints
 
-| Route             | Methode | Beschreibung                                              |
-|-------------------|---------|-----------------------------------------------------------|
-| `/`               | GET     | Debug-View (`index.html`)                                 |
-| `/api/items`      | GET     | Alle Artikel als JSON                                      |
-| `/api/watermark`  | GET     | Aktuelle Watermark-ID als JSON (für Polling)              |
+| Route             | Method | Description                                               |
+|-------------------|--------|-----------------------------------------------------------|
+| `/`               | GET    | Debug view (`index.html`)                                 |
+| `/api/items`      | GET    | All articles as JSON                                       |
+| `/api/watermark`  | GET    | Current watermark ID as JSON (for polling)                |
 
 ![](images/hnews.png)
-## MCP-Server
+## MCP server
 
-Neben der HTTP-API startet der Service einen MCP-Server, über den die geladenen Hacker-News-Artikel ebenfalls abgefragt werden können. Der MCP-Server läuft über HTTP auf Port `13333`.
+In addition to the HTTP API, the service starts an MCP server through which the loaded Hacker News articles can also be queried. The MCP server runs over HTTP on port `13333`.
 
 ## Start
 
@@ -38,22 +38,22 @@ Neben der HTTP-API startet der Service einen MCP-Server, über den die geladenen
 go run main.go
 ```
 
-Optional mit eigenen Werten:
+Optionally with custom values:
 
 ```bash
 SERVER=localhost:8080 WORKERCOUNT=20 go run main.go
 ```
 
-## systemd-Service
+## systemd service
 
-Binary bauen und z.B. nach `/usr/local/bin` legen:
+Build the binary and place it e.g. in `/usr/local/bin`:
 
 ```bash
 go build -o go-news main.go
 sudo install -m 0755 go-news /usr/local/bin/go-news
 ```
 
-Unit-Datei `/etc/systemd/system/go-news.service`:
+Unit file `/etc/systemd/system/go-news.service`:
 
 ```ini
 [Unit]
@@ -65,25 +65,25 @@ Wants=network-online.target
 Type=simple
 User=marco
 Group=marco
-WorkingDirectory=/home/marco/go/src/gittea.kittel.dev/marco/go-news
+WorkingDirectory=/home/marco/go/src/github.com/coolvegan/go-hackernews
 ExecStart=/usr/local/bin/go-news
 Restart=on-failure
 RestartSec=5
 
-# Umgebungsvariablen (optional, Defaults siehe oben)
+# Environment variables (optional, defaults see above)
 Environment=SERVER=localhost:7777
 Environment=WORKERCOUNT=10
 Environment=HALFTIME=1800
 Environment=PRELOADITEMS=2000
 
-# Ressourcen / Sicherheit
+# Resources / security
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/log
 
-# Logging nach journald
+# Logging to journald
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=go-news
@@ -92,14 +92,14 @@ SyslogIdentifier=go-news
 WantedBy=multi-user.target
 ```
 
-Service aktivieren und starten:
+Enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now go-news
 ```
 
-Status und Logs:
+Status and logs:
 
 ```bash
 systemctl status go-news

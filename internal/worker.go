@@ -26,7 +26,7 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 	for i := 1; i <= f.workerCount; i++ {
 		go func(workerId int, jobs <-chan int, results chan<- WorkResult) {
 			var wg sync.WaitGroup
-			log.Printf("Worker gestarted %d", workerId)
+			log.Printf("Worker started %d", workerId)
 			for jobId := range jobs {
 				// log.Printf("Worker %d bearbeitet Job %d", workerId, jobId)
 
@@ -45,7 +45,7 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 					f.fetchComments(dataMap, f.itemsUri, &wg)
 				}
 				wg.Wait()
-				log.Printf("Worker %d arbeitete erfolgreich für ItemID %d.\n", workerId, jobId)
+				log.Printf("Worker %d worked successfully on ItemID %d.\n", workerId, jobId)
 				results <- WorkResult{Item: *dataMap, Err: err}
 
 			}
