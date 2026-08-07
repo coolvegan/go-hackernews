@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>~/feed.json</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    :root {
+      --bg: #060a06;
+      --bg-panel: #0b120b;
+      --bg-card: #0d150d;
+      --line: #17351a;
+      --line-soft: #0f210f;
+      --green: #00ff66;
+      --green-dim: #22a83f;
+      --green-dimmer: #14601f;
+      --green-faint: #0c3d13;
+      --amber-dead: #ff4444;
+      --shadow-glow: 0 0 10px rgba(0, 255, 102, .25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      /* Seite bleibt fix, kein Scrollen der Gesamtseite */
+      background: var(--bg);
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--green-dim);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---------- CRT / Scanline Atmosphäre ---------- */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(to bottom,
+          rgba(0, 255, 102, 0.035) 0px,
+          rgba(0, 255, 102, 0.035) 1px,
+          transparent 1px,
+          transparent 3px);
+      z-index: 50;
+      mix-blend-mode: screen;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, .55) 100%);
+      z-index: 51;
+    }
+
+    /* ---------- Terminal Chrome ---------- */
+    #titlebar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green-faint);
+      border: 1px solid var(--line);
+    }
+
+    #titlebar .path {
+      margin-left: 6px;
+      font-size: .8rem;
+      color: var(--green-dimmer);
+      letter-spacing: .5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #titlebar .path .cmd {
+      color: var(--green);
+    }
+
+    #titlebar .path .blink {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      background: var(--green);
+      margin-left: 2px;
+      vertical-align: -2px;
+      animation: blink 1s steps(1) infinite;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+    #statusline {
+      margin-left: auto;
+      font-size: .72rem;
+      color: var(--green-dimmer);
+      white-space: nowrap;
+    }
+
+    #statusline .ok {
+      color: var(--green);
+    }
+
+    /* ---------- Hauptbühne: genau EIN Item sichtbar, kein horizontales Scrollen ---------- */
+    #stage {
+      position: relative;
+      flex: 1 1 auto;
+      overflow: hidden;
+      /* kein seitliches Scrollen der Seite */
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      padding: 22px 22px 0 22px;
+    }
+
+    #viewport {
+      position: relative;
+      width: min(760px, 100%);
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      /* vertikales Scrollen innerhalb eines Threads ist ok */
+      overflow-x: hidden;
+      padding-right: 6px;
+      transition: transform .32s cubic-bezier(.22, .61, .36, 1), opacity .32s ease;
+    }
+
+    .slide::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .slide::-webkit-scrollbar-thumb {
+      background: var(--green-faint);
+      border-radius: 3px;
+    }
+
+    .slide::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .slide-enter-right {
+      transform: translateX(28px);
+      opacity: 0;
+    }
+
+    .slide-enter-left {
+      transform: translateX(-28px);
+      opacity: 0;
+    }
+
+    .slide-active {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    .slide-exit-left {
+      transform: translateX(-28px);
+      opacity: 0;
+    }
+
+    .slide-exit-right {
+      transform: translateX(28px);
+      opacity: 0;
+    }
+
+    .msg {
+      padding: 40px 10px;
+      text-align: center;
+      color: var(--green-dimmer);
+      font-size: .9rem;
+    }
+
+    .msg .glow {
+      color: var(--green);
+      text-shadow: var(--shadow-glow);
+    }
+
+    /* ---------- Karten ---------- */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+
+    .card.root {
+      border-color: var(--green-dimmer);
+      box-shadow: inset 0 0 0 1px var(--green-faint), var(--shadow-glow);
+    }
+
+    .card.dead {
+      opacity: .55;
+      border-style: dashed;
+    }
+
+    .meta {
+      font-size: .72rem;
+      color: var(--green-dimmer);
+      letter-spacing: .3px;
+      margin-bottom: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px 10px;
+    }
+
+    .meta .k {
+      color: var(--green-faint);
+    }
+
+    .meta .v {
+      color: var(--green-dim);
+    }
+
+    .meta .score {
+      color: var(--green);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: .62rem;
+      padding: 1px 5px;
+      border: 1px solid var(--amber-dead);
+      color: var(--amber-dead);
+      border-radius: 2px;
+      letter-spacing: .5px;
+    }
+
+    .title {
+      font-family: 'VT323', monospace;
+      font-size: 1.55rem;
+      line-height: 1.25;
+      margin: 0 0 8px 0;
+      color: var(--green);
+      text-shadow: 0 0 6px rgba(0, 255, 102, .18);
+    }
+
+    .title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .title a:hover {
+      text-decoration: underline;
+    }
+
+    .title::before {
+      content: "> ";
+      color: var(--green-dimmer);
+    }
+
+    .url-line a {
+      color: var(--green-dim);
+      font-size: .8rem;
+      word-break: break-all;
+    }
+
+    .text {
+      font-size: .86rem;
+      line-height: 1.55;
+      color: var(--green-dim);
+      word-break: break-word;
+    }
+
+    .text p {
+      margin: 6px 0;
+    }
+
+    .text a {
+      color: var(--green);
+    }
+
+    /* ---------- Kommentar-Baum ---------- */
+    .replies {
+      margin-left: 10px;
+      padding-left: 14px;
+      margin-top: 10px;
+      border-left: 1px dashed var(--line);
+    }
+
+    .comment {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .comment:last-child {
+      border-bottom: none;
+    }
+
+    .comment::before {
+      content: "├─ ";
+      color: var(--green-faint);
+    }
+
+    .comment .meta {
+      display: inline;
+    }
+
+    .comment .text {
+      margin-top: 4px;
+    }
+
+    /* ---------- Navigations-Leiste (unten, terminal-artig) ---------- */
+    #navbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 12px 16px 16px;
+      background: var(--bg);
+    }
+
+    .nav-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      color: var(--green-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      padding: 6px 12px;
+      border-radius: 2px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .nav-btn:hover {
+      border-color: var(--green-dimmer);
+      color: var(--green);
+    }
+
+    .nav-btn:active {
+      transform: translateY(1px);
+    }
+
+    .nav-btn:disabled {
+      opacity: .3;
+      cursor: default;
+    }
+
+    #progress {
+      font-size: .85rem;
+      letter-spacing: 1px;
+      color: var(--green-dimmer);
+      min-width: 250px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    #progress .bar {
+      color: var(--green);
+    }
+
+    #progress .idx {
+      color: var(--green);
+    }
+
+    #hint {
+      font-size: .66rem;
+      color: var(--green-faint);
+      text-align: center;
+      padding-bottom: 10px;
+      letter-spacing: .4px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="titlebar">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="path"><span class="cmd">guest@hn</span>:~$ tail -f feed.json<span class="blink"></span></span>
+    <span id="statusline">verbinde…</span>
+  </div>
+
+  <div id="stage">
+    <div id="viewport">
+      <div class="slide slide-active" id="slide-a">
+        <div class="msg">Lade Daten vom Endpunkt<span class="glow">…</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="navbar">
+    <button class="nav-btn" id="btn-first" disabled>|&lt; first</button>
+    <button class="nav-btn" id="btn-prev" disabled>&lt; prev</button>
+    <div id="progress">--</div>
+    <button class="nav-btn" id="btn-next" disabled>next &gt;</button>
+    <button class="nav-btn" id="btn-last" disabled>last &gt;|</button>
+  </div>
+  <div id="hint">← → oder Swipe · zeigt nächsten / vorherigen Thread</div>
+
+  <script>
+    const API_URL = '/api/items';
+    const POLL_INTERVAL_MS = 3000; // Intervall für automatisches Nachladen
+
+    let rootItems = [];   // aktuell geladene Root-Threads
+    let currentIndex = 0;
+
+    const viewport = document.getElementById('viewport');
+    const statusline = document.getElementById('statusline');
+    const progressEl = document.getElementById('progress');
+    const btnFirst = document.getElementById('btn-first');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const btnLast = document.getElementById('btn-last');
+
+    function decodeHTMLEntities(text) {
+      if (!text) return '';
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = text;
+      return textarea.value;
+    }
+
+    // Repariert kaputtes JSON, das rohe/ungültige Backslash-Escapes oder
+    // unescapte Steuerzeichen innerhalb von Strings enthält (z.B. Windows-Pfade
+    // "C:\Users\x", Regex-Schnipsel "\d+\s*" oder LaTeX "\alpha" in HN-Texten).
+    // Arbeitet zeichenweise mit echtem String-Tracking, statt mit einer
+    // einzelnen globalen Regex zu raten - das behandelt auch Ketten von
+    // mehreren Backslashes hintereinander korrekt.
+    function sanitizeJsonText(text) {
+      const VALID_ESCAPES = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u']);
+      const HEX_RE = /^[0-9a-fA-F]{4}$/;
+
+      function representControlChar(ch) {
+        switch (ch) {
+          case '\n': return '\\n';
+          case '\r': return '\\r';
+          case '\t': return '\\t';
+          case '\b': return '\\b';
+          case '\f': return '\\f';
+          default: return '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0');
+        }
+      }
+
+      let out = '';
+      let inString = false;
+      let escaped = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+
+        if (!inString) {
+          if (ch === '"') inString = true;
+          out += ch;
+          continue;
+        }
+
+        if (escaped) {
+          escaped = false;
+          if (ch === 'u') {
+            const hex = text.slice(i + 1, i + 5);
+            if (HEX_RE.test(hex)) {
+              out += 'u'; // die folgenden 4 Hex-Zeichen werden normal weiterverarbeitet
+            } else {
+              out += '\\u'; // ungültiges \u -> Backslash verdoppeln, "u" bleibt literal
+            }
+            continue;
+          }
+          if (VALID_ESCAPES.has(ch)) {
+            out += ch;
+          } else {
+            // ungültiges Escape: vorherigen Backslash verdoppeln (-> literaler
+            // Backslash) und das Zeichen selbst sicher darstellen
+            out += '\\' + (ch.charCodeAt(0) < 0x20 ? representControlChar(ch) : ch);
+          }
+          continue;
+        }
+
+        if (ch === '\\') {
+          out += ch;
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = false;
+          out += ch;
+          continue;
+        }
+        if (ch.charCodeAt(0) < 0x20) {
+          out += representControlChar(ch); // rohes Steuerzeichen im String -> escapen
+          continue;
+        }
+        out += ch;
+      }
+      return out;
+    }
+
+    function fmtTime(t) {
+      if (!t) return '';
+      return new Date(t * 1000).toLocaleString('de-DE');
+    }
+
+    function commentHTML(item) {
+      const dead = item.dead ? 'dead' : '';
+      const deadBadge = item.dead ? '<span class="badge">DEAD</span>' : '';
+      const decodedText = decodeHTMLEntities(item.text);
+      const childrenHTML = (item.children && item.children.length)
+        ? `<div class="replies">${item.children.map(commentHTML).join('')}</div>`
+        : '';
+      return `
+      <div class="comment ${dead}">
+        <div class="meta">
+          <span class="k">by</span><span class="v">${item.by || 'anonym'}</span>
+          <span class="k">score</span><span class="v score">${item.score ?? 0}</span>
+          <span class="k">time</span><span class="v">${fmtTime(item.time)}</span>
+          ${deadBadge}
+        </div>
+        ${decodedText ? `<div class="text">${decodedText}</div>` : ''}
+        ${childrenHTML}
+      </div>
+    `;
+    }
+
+    function rootHTML(item) {
+      const dead = item.dead ? 'dead' : '';
+      const deadBadge = item.dead ? '<span class="badge">DEAD</span>' : '';
+      const decodedText = decodeHTMLEntities(item.text);
+      const childrenHTML = (item.children && item.children.length)
+        ? `<div class="replies">${item.children.map(commentHTML).join('')}</div>`
+        : '';
+
+      return `
+      <div class="card root ${dead}">
+        <div class="meta">
+          <span class="k">id</span><span class="v">${item.id}</span>
+          <span class="k">by</span><span class="v">${item.by || 'anonym'}</span>
+          <span class="k">score</span><span class="v score">${item.score ?? 0}</span>
+          <span class="k">time</span><span class="v">${fmtTime(item.time)}</span>
+          ${deadBadge}
+        </div>
+        ${item.title ? `<h3 class="title">${item.url ? `<a href="${item.url}" target="_blank" rel="noopener">${item.title}</a>` : item.title}</h3>` : ''}
+        ${item.url && !item.title ? `<div class="url-line"><a href="${item.url}" target="_blank" rel="noopener">${item.url}</a></div>` : ''}
+        ${decodedText ? `<div class="text">${decodedText}</div>` : (item.title ? '' : '<div class="text"><em>(kein Text)</em></div>')}
+        ${childrenHTML}
+      </div>
+    `;
+    }
+
+    function buildTree(items) {
+      const valid = (items || []).filter(item => item && item.id !== 0);
+      const itemMap = new Map();
+      valid.forEach(item => {item.children = []; itemMap.set(item.id, item);});
+
+      const roots = [];
+      valid.forEach(item => {
+        if (item.parent !== 0 && itemMap.has(item.parent)) {
+          itemMap.get(item.parent).children.push(item);
+        } else {
+          roots.push(item);
+        }
+      });
+
+      roots.sort((a, b) => (b.time || 0) - (a.time || 0));
+      valid.forEach(item => {
+        if (item.children.length > 1) {
+          item.children.sort((a, b) => (a.time || 0) - (b.time || 0));
+        }
+      });
+      return roots;
+    }
+
+    function renderMessage(html) {
+      viewport.innerHTML = `<div class="slide slide-active">${html}</div>`;
+      progressEl.textContent = '--';
+      btnFirst.disabled = true;
+      btnPrev.disabled = true;
+      btnNext.disabled = true;
+      btnLast.disabled = true;
+    }
+
+    function progressBar(index, total) {
+      const width = 14;
+      const filled = total > 0 ? Math.round(((index + 1) / total) * width) : 0;
+      return '['.concat('#'.repeat(filled)).concat('-'.repeat(width - filled)).concat(']');
+    }
+
+    function updateProgress() {
+      const total = rootItems.length;
+      progressEl.innerHTML =
+        `<span class="idx">${String(currentIndex + 1).padStart(2, '0')}</span> / ${String(total).padStart(2, '0')} <span class="bar">${progressBar(currentIndex, total)}</span>`;
+      btnFirst.disabled = currentIndex <= 0;
+      btnPrev.disabled = currentIndex <= 0;
+      btnNext.disabled = currentIndex >= total - 1;
+      btnLast.disabled = currentIndex >= total - 1;
+    }
+
+    let isTransitioning = false;
+
+    function renderCurrent(direction) {
+      const total = rootItems.length;
+      if (total === 0) {
+        renderMessage('<div class="msg">Keine gültigen Items vorhanden.</div>');
+        return;
+      }
+      if (currentIndex < 0) currentIndex = 0;
+      if (currentIndex > total - 1) currentIndex = total - 1;
+
+      const html = rootHTML(rootItems[currentIndex]);
+      const enterClass = direction === 'left' ? 'slide-enter-right' : direction === 'right' ? 'slide-enter-left' : null;
+      const exitClass = direction === 'left' ? 'slide-exit-left' : 'slide-exit-right';
+
+      // ALLE aktuell vorhandenen Slides erfassen (nicht nur das erste Element),
+      // damit bei überlappenden Übergängen keine Reste liegen bleiben.
+      const olds = Array.from(viewport.querySelectorAll('.slide'));
+
+      const next = document.createElement('div');
+      next.className = 'slide ' + (enterClass || 'slide-active');
+      next.innerHTML = html;
+      next.scrollTop = 0;
+      viewport.appendChild(next);
+
+      if (enterClass) {
+        requestAnimationFrame(() => {
+          next.classList.remove(enterClass);
+          next.classList.add('slide-active');
+        });
+      }
+
+      olds.forEach(old => {
+        if (direction) {
+          old.classList.add(exitClass);
+          old.classList.remove('slide-active');
+        }
+        setTimeout(() => old.remove(), direction ? 340 : 0);
+      });
+
+      if (direction) {
+        isTransitioning = true;
+        setTimeout(() => {isTransitioning = false;}, 340);
+      }
+
+      updateProgress();
+    }
+
+    function goTo(index, direction) {
+      if (rootItems.length === 0) return;
+      if (direction && isTransitioning) return; // Übergang läuft noch, Eingabe ignorieren
+      const clamped = Math.max(0, Math.min(rootItems.length - 1, index));
+      if (clamped === currentIndex && direction) return;
+      currentIndex = clamped;
+      renderCurrent(direction);
+    }
+
+    function renderItems(items) {
+      const roots = buildTree(items);
+      rootItems = roots;
+      if (currentIndex > roots.length - 1) currentIndex = Math.max(0, roots.length - 1);
+      renderCurrent(null);
+    }
+
+    function fetchItems() {
+      const url = API_URL + '?t=' + Date.now();
+      statusline.textContent = 'lade…';
+
+      fetch(url, {cache: 'no-store'})
+        .then(res => res.text())
+        .then(text => {
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            try {
+              data = JSON.parse(sanitizeJsonText(text));
+            } catch (e2) {
+              throw new Error("JSON parsing fehlgeschlagen: " + e2.message);
+            }
+          }
+          renderItems(data);
+          statusline.innerHTML = '<span class="ok">● verbunden</span>';
+        })
+        .catch(err => {
+          console.error(err);
+          renderMessage(`<div class="msg" style="color:var(--amber-dead)">Fehler beim Neuladen: ${err.message}</div>`);
+          statusline.innerHTML = '<span style="color:var(--amber-dead)">● Fehler</span>';
+        });
+    }
+
+    // ---------- Navigation: Tastatur ----------
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') goTo(currentIndex + 1, 'right');
+      if (e.key === 'ArrowLeft') goTo(currentIndex - 1, 'left');
+    });
+
+    // ---------- Navigation: Swipe ----------
+    let touchStartX = 0;
+    let touchStartY = 0;
+    document.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    });
+    document.addEventListener('touchend', e => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const diffX = touchStartX - touchEndX;
+      const diffY = touchStartY - touchEndY;
+
+      // nur reagieren, wenn die Geste überwiegend horizontal ist,
+      // damit vertikales Scrollen im Thread nicht blockiert wird
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+        if (diffX > 0) goTo(currentIndex + 1, 'right');
+        else goTo(currentIndex - 1, 'left');
+      }
+    });
+
+    // ---------- Navigation: Buttons ----------
+    btnFirst.addEventListener('click', () => goTo(0, 'left'));
+    btnPrev.addEventListener('click', () => goTo(currentIndex - 1, 'left'));
+    btnNext.addEventListener('click', () => goTo(currentIndex + 1, 'right'));
+    btnLast.addEventListener('click', () => goTo(rootItems.length - 1, 'right'));
+
+    // Initial starten – lädt sofort und danach im festen Intervall neu,
+    // unabhängig von einem separaten Watermark-Endpunkt
+    fetchItems();
+    setInterval(fetchItems, POLL_INTERVAL_MS);
+  </script>
+
+</body>
+
+</html>
