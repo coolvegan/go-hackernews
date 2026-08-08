@@ -391,6 +391,28 @@
       padding-bottom: 10px;
       letter-spacing: .4px;
     }
+
+    /* ---------- Update Banner (nur im manuellen Modus, AUTO_REFRESH=false) ---------- */
+    #update-banner {
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      z-index: 1000;
+      background: var(--bg-panel);
+      color: var(--green);
+      border: 1px solid var(--green-dimmer);
+      padding: 8px 14px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: .78rem;
+      letter-spacing: .4px;
+      box-shadow: var(--shadow-glow);
+    }
+
+    #update-banner::before {
+      content: "● ";
+      animation: blink 1s steps(1) infinite;
+    }
   </style>
 </head>
 
@@ -423,8 +445,14 @@
     const API_URL = '/api/items';
     const POLL_INTERVAL_MS = 3000; // Intervall für automatisches Nachladen
 
+    // true  = neue Daten werden automatisch übernommen (aktuelles Verhalten)
+    // false = neue Daten werden erst nach Klick auf den Update-Banner übernommen
+    const AUTO_REFRESH = false;
+
     let rootItems = [];   // aktuell geladene Root-Threads
     let currentIndex = 0;
+    let pendingData = null;   // im manuellen Modus: bereits geladene, aber noch nicht angezeigte Daten
+    let hasLoadedOnce = false; // der allererste Ladevorgang wird immer sofort angezeigt
 
     const viewport = document.getElementById('viewport');
     const statusline = document.getElementById('statusline');
@@ -434,11 +462,14 @@
     const btnNext = document.getElementById('btn-next');
     const btnLast = document.getElementById('btn-last');
 
-    function decodeHTMLEntities(text) {
-      if (!text) return '';
-      const textarea = document.createElement('textarea');
-      textarea.innerHTML = text;
-      return textarea.value;
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     // Repariert kaputtes JSON, das rohe/ungültige Backslash-Escapes oder
@@ -515,6 +546,26 @@
       return out;
     }
 
+    function showUpdateBanner() {
+      if (document.getElementById('update-banner')) return;
+      const banner = document.createElement('div');
+      banner.id = 'update-banner';
+      banner.innerText = 'Update verfügbar';
+      banner.onclick = () => {
+        banner.remove();
+        if (pendingData !== null) {
+          renderItems(pendingData);
+          pendingData = null;
+        }
+      };
+      document.body.appendChild(banner);
+    }
+
+    function hideUpdateBanner() {
+      const banner = document.getElementById('update-banner');
+      if (banner) banner.remove();
+    }
+
     function fmtTime(t) {
       if (!t) return '';
       return new Date(t * 1000).toLocaleString('de-DE');
@@ -523,19 +574,19 @@
     function commentHTML(item) {
       const dead = item.dead ? 'dead' : '';
       const deadBadge = item.dead ? '<span class="badge">DEAD</span>' : '';
-      const decodedText = decodeHTMLEntities(item.text);
+      const safeText = item.text || ''; // HN liefert bereits sicheres, fertiges HTML - nicht dekodieren
       const childrenHTML = (item.children && item.children.length)
         ? `<div class="replies">${item.children.map(commentHTML).join('')}</div>`
         : '';
       return `
       <div class="comment ${dead}">
         <div class="meta">
-          <span class="k">by</span><span class="v">${item.by || 'anonym'}</span>
+          <span class="k">by</span><span class="v">${escapeHtml(item.by) || 'anonym'}</span>
           <span class="k">score</span><span class="v score">${item.score ?? 0}</span>
           <span class="k">time</span><span class="v">${fmtTime(item.time)}</span>
           ${deadBadge}
         </div>
-        ${decodedText ? `<div class="text">${decodedText}</div>` : ''}
+        ${safeText ? `<div class="text">${safeText}</div>` : ''}
         ${childrenHTML}
       </div>
     `;
@@ -544,7 +595,9 @@
     function rootHTML(item) {
       const dead = item.dead ? 'dead' : '';
       const deadBadge = item.dead ? '<span class="badge">DEAD</span>' : '';
-      const decodedText = decodeHTMLEntities(item.text);
+      const safeText = item.text || ''; // HN liefert bereits sicheres, fertiges HTML - nicht dekodieren
+      const safeTitle = escapeHtml(item.title);
+      const safeUrl = escapeHtml(item.url);
       const childrenHTML = (item.children && item.children.length)
         ? `<div class="replies">${item.children.map(commentHTML).join('')}</div>`
         : '';
@@ -553,39 +606,63 @@
       <div class="card root ${dead}">
         <div class="meta">
           <span class="k">id</span><span class="v">${item.id}</span>
-          <span class="k">by</span><span class="v">${item.by || 'anonym'}</span>
+          <span class="k">by</span><span class="v">${escapeHtml(item.by) || 'anonym'}</span>
           <span class="k">score</span><span class="v score">${item.score ?? 0}</span>
           <span class="k">time</span><span class="v">${fmtTime(item.time)}</span>
           ${deadBadge}
         </div>
-        ${item.title ? `<h3 class="title">${item.url ? `<a href="${item.url}" target="_blank" rel="noopener">${item.title}</a>` : item.title}</h3>` : ''}
-        ${item.url && !item.title ? `<div class="url-line"><a href="${item.url}" target="_blank" rel="noopener">${item.url}</a></div>` : ''}
-        ${decodedText ? `<div class="text">${decodedText}</div>` : (item.title ? '' : '<div class="text"><em>(kein Text)</em></div>')}
+        ${item.title ? `<h3 class="title">${item.url ? `<a href="${safeUrl}" target="_blank" rel="noopener">${safeTitle}</a>` : safeTitle}</h3>` : ''}
+        ${item.url && !item.title ? `<div class="url-line"><a href="${safeUrl}" target="_blank" rel="noopener">${safeUrl}</a></div>` : ''}
+        ${safeText ? `<div class="text">${safeText}</div>` : (item.title ? '' : '<div class="text"><em>(kein Text)</em></div>')}
         ${childrenHTML}
       </div>
     `;
     }
 
-    function buildTree(items) {
-      const valid = (items || []).filter(item => item && item.id !== 0);
-      const itemMap = new Map();
-      valid.forEach(item => {item.children = []; itemMap.set(item.id, item);});
+    function normalizeNestedComments(item) {
+      const rawChildren = Array.isArray(item.Comments) ? item.Comments : [];
+      item.children = rawChildren.map(normalizeNestedComments);
+      if (item.children.length > 1) {
+        item.children.sort((a, b) => (a.time || 0) - (b.time || 0));
+      }
+      return item;
+    }
 
-      const roots = [];
-      valid.forEach(item => {
-        if (item.parent !== 0 && itemMap.has(item.parent)) {
-          itemMap.get(item.parent).children.push(item);
-        } else {
-          roots.push(item);
-        }
-      });
+    function buildTree(itemsInput) {
+      // Backend liefert jetzt eine Map {"<id>": item, ...} statt einer Liste.
+      // Array.isArray-Check hält die Funktion trotzdem kompatibel, falls sich
+      // das Format nochmal ändert oder für Debugging/Tests ein Array kommt.
+      const rawList = Array.isArray(itemsInput) ? itemsInput : Object.values(itemsInput || {});
+      const valid = rawList.filter(item => item && item.id !== 0);
+
+      // Neues Format: jedes Item bringt seine Kommentare bereits rekursiv
+      // verschachtelt im Feld "Comments" mit (statt einer flachen Liste mit
+      // "parent"-Verknüpfung). Erkennen wir dieses Feld, nutzen wir es direkt.
+      const hasNestedFormat = valid.some(item => 'Comments' in item);
+
+      let roots;
+      if (hasNestedFormat) {
+        roots = valid.map(normalizeNestedComments);
+      } else {
+        // Altes Format: flache Liste, Verknüpfung über item.parent
+        const itemMap = new Map();
+        valid.forEach(item => {item.children = []; itemMap.set(item.id, item);});
+        roots = [];
+        valid.forEach(item => {
+          if (item.parent !== 0 && itemMap.has(item.parent)) {
+            itemMap.get(item.parent).children.push(item);
+          } else {
+            roots.push(item);
+          }
+        });
+        valid.forEach(item => {
+          if (item.children.length > 1) {
+            item.children.sort((a, b) => (a.time || 0) - (b.time || 0));
+          }
+        });
+      }
 
       roots.sort((a, b) => (b.time || 0) - (a.time || 0));
-      valid.forEach(item => {
-        if (item.children.length > 1) {
-          item.children.sort((a, b) => (a.time || 0) - (b.time || 0));
-        }
-      });
       return roots;
     }
 
@@ -626,6 +703,21 @@
       if (currentIndex > total - 1) currentIndex = total - 1;
 
       const html = rootHTML(rootItems[currentIndex]);
+
+      // Auto-Refresh (kein direction, z.B. durch Polling): bestehendes Slide
+      // in-place aktualisieren statt neu zu erzeugen, damit die Scroll-Position
+      // beim Lesen langer Kommentar-Threads erhalten bleibt.
+      if (!direction) {
+        const existing = viewport.querySelector('.slide');
+        if (existing) {
+          const savedScrollTop = existing.scrollTop;
+          existing.innerHTML = html;
+          existing.scrollTop = savedScrollTop;
+          updateProgress();
+          return;
+        }
+      }
+
       const enterClass = direction === 'left' ? 'slide-enter-right' : direction === 'right' ? 'slide-enter-left' : null;
       const exitClass = direction === 'left' ? 'slide-exit-left' : 'slide-exit-right';
 
@@ -695,7 +787,20 @@
               throw new Error("JSON parsing fehlgeschlagen: " + e2.message);
             }
           }
-          renderItems(data);
+          if (!hasLoadedOnce || AUTO_REFRESH) {
+            // Erster Ladevorgang läuft immer sofort durch, egal welcher Modus
+            // aktiv ist - sonst sähe man beim Start ja nichts.
+            hasLoadedOnce = true;
+            pendingData = null;
+            hideUpdateBanner();
+            renderItems(data);
+          } else {
+            // Manueller Modus: Daten sind da, werden aber erst nach Klick
+            // auf den Banner übernommen (Scroll-Position etc. bleiben so
+            // lange unangetastet).
+            pendingData = data;
+            showUpdateBanner();
+          }
           statusline.innerHTML = '<span class="ok">● verbunden</span>';
         })
         .catch(err => {

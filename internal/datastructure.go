@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"sync"
 	"time"
 )
 
@@ -12,18 +13,19 @@ type ArticleSummary struct {
 }
 
 type Item struct {
-	Id       int    `json:"id"`
-	Score    int    `json:"score"`
-	Time     int64  `json:"time"`
-	Title    string `json:"title"`
-	Text     string `json:"text"`
-	Type     string `json:"type"`
-	By       string `json:"by"`
-	Kids     []int  `json:"kids"`
-	Url      string `json:"url"`
-	Parent   int    `json:"parent"`
-	Dead     bool   `json:"dead"`
-	Comments []*Item
+	Id        int    `json:"id"`
+	Score     int    `json:"score"`
+	Time      int64  `json:"time"`
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+	Type      string `json:"type"`
+	By        string `json:"by"`
+	Kids      []int  `json:"kids"`
+	Url       string `json:"url"`
+	Parent    int    `json:"parent"`
+	Dead      bool   `json:"dead"`
+	Comments  []*Item
+	FetchedAt time.Time
 	// Descendants any `json:"descendants"`
 }
 
@@ -39,12 +41,15 @@ type Fetcher struct {
 	downloadComments bool
 	jobs             chan int
 	results          chan WorkResult
+	worklog          map[int]struct{}
+	wrklmu           sync.RWMutex
 }
 
 func NewFetcher(workerCount int) *Fetcher {
 	jobs := make(chan int, workerCount)
 	results := make(chan WorkResult, workerCount)
-	f := Fetcher{itemsUri: ITEMSURL, topstoryUri: TOPSTORIES, newestIdUri: MAXITEMURL, workerCount: workerCount, downloadComments: true, jobs: jobs, results: results}
+	worklog := make(map[int]struct{})
+	f := Fetcher{itemsUri: ITEMSURL, topstoryUri: TOPSTORIES, newestIdUri: MAXITEMURL, workerCount: workerCount, downloadComments: true, jobs: jobs, results: results, worklog: worklog}
 	f.InitWorker(jobs, results)
 	return &f
 }
@@ -56,4 +61,21 @@ type WorkResult struct {
 
 func (f *Fetcher) CommentDownload(option bool) {
 	f.downloadComments = option
+}
+
+func (f *Fetcher) Lock(jobId int) bool {
+	f.wrklmu.Lock()
+	defer f.wrklmu.Unlock()
+	_, jobIdIsAlreadyInProcess := f.worklog[jobId]
+	if jobIdIsAlreadyInProcess {
+		return false
+	}
+	f.worklog[jobId] = struct{}{}
+	return true
+}
+
+func (f *Fetcher) Unlock(jobId int) {
+	f.wrklmu.Lock()
+	delete(f.worklog, jobId)
+	f.wrklmu.Unlock()
 }

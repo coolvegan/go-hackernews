@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 // GET ITEM FROM HACKERNEWS DESERIALIIZED TO ITEM
@@ -27,5 +28,6 @@ func fetch(kid int, itemsUri string) (*Item, error) {
 		log.Println(err)
 		return nil, err
 	}
+	childMap.FetchedAt = time.Now()
 	return &childMap, nil
 }

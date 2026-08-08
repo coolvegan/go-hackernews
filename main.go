@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,13 +17,25 @@ import (
 
 var (
 	WORKERCOUNT         = 10
-	OLDARTICLELOADCOUNT = 5000
-	MINARTICLE          = 200
+	OLDARTICLELOADCOUNT = 1000
+	MINARTICLE          = 10
 	// Alle X Minuten die Datenstruktur im Speicher verkleinern
-	HALVEMEMORYDURATION = 1800
-	SERVER              = fmt.Sprintf("localhost:7777")
-	MCPSERVER           = fmt.Sprintf("localhost:13333")
+	HOURSOLDERSINCEFETCH = 12
+	SERVER               = fmt.Sprintf("localhost:7777")
+	MCPSERVER            = fmt.Sprintf("localhost:13333")
 )
+
+type DebugWriter struct{}
+
+func (w *DebugWriter) Write(p []byte) (n int, err error) {
+	if os.Getenv("DEBUG") != "TRUE" {
+		return len(p), nil
+	}
+	msg := strings.TrimSpace(string(p))
+	fmt.Printf("Debug: %s\n", msg)
+
+	return len(p), nil
+}
 
 func main() {
 	srv := os.Getenv("SERVER")
@@ -43,7 +55,7 @@ func main() {
 	halftime := os.Getenv("HALFTIME")
 	ht, err := strconv.Atoi(halftime)
 	if err == nil {
-		HALVEMEMORYDURATION = ht
+		HOURSOLDERSINCEFETCH = ht
 	}
 	preloaditems := os.Getenv("PRELOADITEMS")
 	pl, err := strconv.Atoi(preloaditems)
@@ -53,7 +65,8 @@ func main() {
 
 	var mu sync.RWMutex
 	var watermarkmu sync.RWMutex
-	var hackerNewsItems []*internal.Item
+	hackerNewsItemsMap := make(map[int]*internal.Item)
+
 	articleInputChan := make(chan int, WORKERCOUNT)
 	defer close(articleInputChan)
 	log.Println("Starting Hackernews Fetcher")
@@ -69,14 +82,14 @@ func main() {
 	watermark := latestId - OLDARTICLELOADCOUNT
 	watermarkmu.Unlock()
 	go func() {
-		internal.RunHackernewsMcp(MCPSERVER, &hackerNewsItems, &mu)
+		internal.RunHackernewsMcp(MCPSERVER, &hackerNewsItemsMap, &mu)
 	}()
 
 	go func() {
 		//Alte Artikel laden
 		waterMarkTicker := time.NewTicker(time.Second * 5)
 		itemShowTimer := time.NewTicker(time.Second * 15)
-		inHalfCutTimer := time.NewTicker(time.Minute * time.Duration(HALVEMEMORYDURATION))
+		deleteOldItemsTimer := time.NewTicker(time.Minute * 5)
 		for {
 			select {
 			case <-ctx.Done():
@@ -97,15 +110,18 @@ func main() {
 			case <-itemShowTimer.C:
 				var articleCount int
 				mu.RLock()
-				articleCount = len(hackerNewsItems)
+				articleCount = len(hackerNewsItemsMap)
 				mu.RUnlock()
 				log.Printf("%d Article from Hackernews in Memory.\n", articleCount)
-			case <-inHalfCutTimer.C:
+			case <-deleteOldItemsTimer.C:
 				mu.Lock()
-				if len(hackerNewsItems) >= MINARTICLE {
-					half := len(hackerNewsItems) / 2
-					//Slice halbieren und Speicher freigeben
-					hackerNewsItems = slices.Clone(hackerNewsItems[half:])
+				if len(hackerNewsItemsMap) >= MINARTICLE {
+					for k, v := range hackerNewsItemsMap {
+						if time.Since(v.FetchedAt) >= time.Hour*time.Duration(HOURSOLDERSINCEFETCH) {
+							log.Printf("Deleting Node with ID %d", v.Id)
+							delete(hackerNewsItemsMap, k)
+						}
+					}
 				}
 				mu.Unlock()
 
@@ -118,7 +134,7 @@ func main() {
 		res := f.FetchFoo(articleInputChan)
 		for r := range res {
 			mu.Lock()
-			hackerNewsItems = append(hackerNewsItems, r)
+			hackerNewsItemsMap[r.Id] = r
 			mu.Unlock()
 		}
 	}()
@@ -136,7 +152,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		mu.RLock()
-		json.NewEncoder(w).Encode(hackerNewsItems)
+		json.NewEncoder(w).Encode(hackerNewsItemsMap)
 		mu.RUnlock()
 	})
 
@@ -144,7 +160,7 @@ func main() {
 	http.HandleFunc("/api/watermark", func(w http.ResponseWriter, r *http.Request) {
 		watermarkmu.RLock()
 		data, err := json.Marshal(watermark)
-		watermarkmu.Unlock()
+		watermarkmu.RUnlock()
 		if err != nil {
 			log.Println(err)
 		}
@@ -153,5 +169,7 @@ func main() {
 		fmt.Fprintf(w, string(data))
 	})
 	log.Printf("Starting DEBUG-Server on Port %v", SERVER)
+	log.Printf("Switching to DebugWriter - Set Environment-Variable DEBUG=TRUE for more Output %v", SERVER)
+	log.SetOutput(&DebugWriter{})
 	log.Fatalln(http.ListenAndServe(SERVER, nil))
 }

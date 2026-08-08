@@ -17,18 +17,18 @@ type HackernewsMcp struct {
 	data []*Item
 }
 
-func RunHackernewsMcp(mcpserver string, data *[]*Item, lock *sync.RWMutex) *HackernewsMcp {
+func RunHackernewsMcp(mcpserver string, hackerNewsItemsMap *map[int]*Item, lock *sync.RWMutex) *HackernewsMcp {
 	s := server.NewMCPServer(
 		"Hackernews Server",
 		"0.0.1",
 		server.WithTaskCapabilities(true, true, true),
 		server.WithMaxConcurrentTasks(10), // Allow up to 10 concurrent running tasks
 	)
-	initialize(s, mcpserver, data, lock)
+	initialize(s, mcpserver, hackerNewsItemsMap, lock)
 	return &HackernewsMcp{s: s}
 }
 
-func initialize(s *server.MCPServer, mcpserver string, data *[]*Item, lock *sync.RWMutex) {
+func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[int]*Item, lock *sync.RWMutex) {
 	hackernewsTool := mcp.NewTool("hackernews",
 		mcp.WithDescription("See the newest entries / articles at hackernews"),
 		mcp.WithString("filter",
@@ -50,9 +50,9 @@ func initialize(s *server.MCPServer, mcpserver string, data *[]*Item, lock *sync
 		minScore := request.GetInt("minScore", 0)
 		maxAgeMinutes := request.GetInt("maxAgeMinutes", 0)
 		lock.RLock()
-		filtered := make([]*Item, 0, len(*data))
+		filtered := make([]*Item, 0, len(*hackerNewsItemsMap))
 		now := time.Now()
-		for _, d := range *data {
+		for _, d := range *hackerNewsItemsMap {
 			if d.Score < minScore {
 				continue
 			}
@@ -86,7 +86,7 @@ func initialize(s *server.MCPServer, mcpserver string, data *[]*Item, lock *sync
 	})
 	s.AddTool(hackernewsToolCount, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		lock.RLock()
-		res, err := json.Marshal(len(*data))
+		res, err := json.Marshal(len(*hackerNewsItemsMap))
 		lock.RUnlock()
 		if err != nil {
 			return nil, err
