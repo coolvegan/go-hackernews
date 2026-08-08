@@ -45,6 +45,24 @@ The debug view (`index.html`) renders the loaded articles and their comment thre
 
 In addition to the HTTP API, the service starts an MCP server through which the loaded Hacker News articles can also be queried. The MCP server runs over HTTP on port `13333`.
 
+### MCP tools
+
+| Tool                    | Description                                                              |
+|--------------------------|--------------------------------------------------------------------------|
+| `hackernews`             | Query articles and comments (see filters below)                          |
+| `hackernewsArticleCount` | Number of articles currently held in memory                              |
+
+### `hackernews` filters
+
+| Parameter    | Type   | Description                                                                 |
+|--------------|--------|-----------------------------------------------------------------------------|
+| `filter`     | string | Required. `summary` (title/url/score) or `full` (all fields incl. comment count) |
+| `minScore`   | number | Only articles with at least this score                                     |
+| `maxAgeMinutes` | number | Only articles fetched within the last N minutes                          |
+| `limit`      | number | Return at most N articles, highest score first                              |
+| `id`         | number | **Story id**; returns that story's comment structure as `parent-id -> []child ids` (no text). Use the returned comment ids with `comments` to fetch their text |
+| `comments`   | array  | **Comment ids** (NOT story ids) to fetch the comment text for. Get comment ids from the `id` parameter's comment structure |
+
 ## Start
 
 ```bash
@@ -78,7 +96,7 @@ Wants=network-online.target
 Type=simple
 User=marco
 Group=marco
-WorkingDirectory=/home/marco/go/src/github.com/coolvegan/go-hackernews
+WorkingDirectory=/home/marco/go/src/gittea.kittel.dev/marco/go-news
 ExecStart=/usr/local/bin/go-news
 Restart=on-failure
 RestartSec=5
