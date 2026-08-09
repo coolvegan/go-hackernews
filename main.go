@@ -59,7 +59,7 @@ func main() {
 
 	var mu sync.RWMutex
 	var watermarkmu sync.RWMutex
-	persistence := internal.NewFsPeristence()
+	persistence := internal.NewGzipFsPeristence()
 	hackerNewsItemsMap, err := persistence.Fetch()
 	if err != nil {
 		hackerNewsItemsMap = make(internal.HNData)
@@ -83,7 +83,7 @@ func main() {
 	go func() {
 		internal.RunHackernewsMcp(MCPSERVER, hackerNewsItemsMap, &mu)
 	}()
-
+	persistence.Store(hackerNewsItemsMap)
 	go func() {
 		waterMarkTicker := time.NewTicker(time.Second * 5)
 		itemShowTimer := time.NewTicker(time.Second * 15)
