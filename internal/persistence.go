@@ -72,6 +72,7 @@ func (j *gzipJsonToFs) Fetch() (HNData, error) {
 		log.Println(err)
 		return nil, err
 	}
+	delete(res, 0)
 	return res, nil
 }
 
@@ -109,5 +110,6 @@ func (j *jsonToFs) Fetch() (HNData, error) {
 		log.Println(err)
 		return nil, err
 	}
+	delete(res, 0)
 	return res, nil
 }
