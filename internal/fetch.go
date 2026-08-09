@@ -61,7 +61,7 @@ func (f *Fetcher) FetchItemsConcurrent(articleCount int) ([]*Item, error) {
 }
 
 func (f *Fetcher) FetchFoo(articleInputChan <-chan int) <-chan *Item {
-	res := make(chan *Item, f.workerCount)
+	res := make(chan *Item, f.workerCount*4)
 	go func() {
 		for aid := range articleInputChan {
 			f.jobs <- aid

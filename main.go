@@ -71,7 +71,7 @@ func main() {
 		MAX_ID = int(math.Max(float64(MAX_ID), float64(k)))
 	}
 
-	articleInputChan := make(chan int, WORKERCOUNT)
+	articleInputChan := make(chan int, WORKERCOUNT*8)
 	defer close(articleInputChan)
 	log.Println("Starting Hackernews Fetcher")
 	//Todo in den Fetcher bringen
