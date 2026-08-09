@@ -6,24 +6,26 @@ A Go service that fetches articles from [Hacker News](https://news.ycombinator.c
 
 - On startup, the most recent article ID (watermark) is fetched from Hacker News.
 - Older articles are then loaded (default `1000`).
-- A ticker polls for new articles every second and adds them.
+- A ticker polls for new articles every 5 seconds and adds them.
 - Articles are fetched in parallel by workers (`WORKERCOUNT`, default `10`).
 - Workers distinguish between **stories** and **comments**. A comment is walked up to its parent story before it is stored, so every stored item is a complete thread.
 - A worklog (lock) prevents two workers from processing the same story/thread at the same time.
 - Every `HALFTIME` hours since fetch (default `12`), items that are older than that are deleted from memory to limit memory usage (at least `MINARTICLE` items are kept).
 - Articles are stored in a map keyed by their ID.
+- The in-memory data is periodically persisted to `data.json` (every `PERSISTENCEINTERVAL` minutes) and reloaded on the next start.
 
 ## Configuration (environment variables)
 
-| Variable          | Default       | Description                                              |
-|-------------------|---------------|----------------------------------------------------------|
-| `SERVER`          | `localhost:7777` | Address of the HTTP debug server                       |
-| `MCPSERVER`       | `localhost:13333` | Address of the MCP server                             |
-| `WORKERCOUNT`     | `10`          | Number of parallel fetch workers                          |
-| `HALFTIME`        | `12`          | Hours after which fetched items are deleted from memory  |
-| `PRELOADITEMS`    | `1000`        | Number of older articles to load initially                |
-| `MINARTICLE`      | `10`          | Minimum number of items kept in memory                    |
-| `DEBUG`           | *(unset)*     | Set to `TRUE` to enable verbose debug logging             |
+| Variable              | Default            | Description                                              |
+|------------------------|--------------------|----------------------------------------------------------|
+| `SERVER`              | `localhost:7777`   | Address of the HTTP debug server                         |
+| `MCPSERVER`           | `localhost:13333`  | Address of the MCP server                                |
+| `WORKERCOUNT`         | `10`               | Number of parallel fetch workers                         |
+| `HALFTIME`            | `12`               | Hours after which fetched items are deleted from memory  |
+| `PRELOADITEMS`        | `1000`             | Number of older articles to load initially               |
+| `MINARTICLE`          | `10`               | Minimum number of items kept in memory                   |
+| `PERSISTENCEINTERVAL` | `5`                | Minutes between writes of the in-memory data to `data.json` |
+| `DEBUG`               | *(unset)*          | Set to `TRUE` to enable verbose debug logging            |
 
 ## HTTP endpoints
 
@@ -31,6 +33,8 @@ A Go service that fetches articles from [Hacker News](https://news.ycombinator.c
 |-------------------|--------|-----------------------------------------------------------|
 | `/`               | GET    | Debug view (`index.html`)                                 |
 | `/api/items`      | GET    | All articles as a JSON map (keyed by ID)                  |
+| `/api/item/{id}`  | GET    | A single article by its ID as JSON                        |
+| `/api/itemkeys`   | GET    | All article IDs as a JSON array, sorted descending        |
 | `/api/watermark`  | GET    | Current watermark ID as JSON (for polling)                |
 
 ![](images/hnews.png)
@@ -41,9 +45,10 @@ The debug view (`index.html`) renders the loaded articles and their comment thre
 
 - **Manual refresh mode**: by default (`AUTO_REFRESH = false`) new data is only applied after clicking the "Update verfügbar" banner, so your scroll position is preserved while reading long threads. Set `AUTO_REFRESH = true` in `index.html` to apply new data automatically.
 - **XSS-safe rendering**: user-supplied fields (title, URL, author) are HTML-escaped before being inserted into the page.
+
 ## MCP server
 
-In addition to the HTTP API, the service starts an MCP server through which the loaded Hacker News articles can also be queried. The MCP server runs over HTTP on port `13333`.
+In addition to the HTTP API, the service starts an MCP server through which the loaded Hacker News articles can also be queried. The MCP server runs over SSE on port `13333`.
 
 ### MCP tools
 
@@ -108,6 +113,7 @@ Environment=WORKERCOUNT=10
 Environment=HALFTIME=12
 Environment=PRELOADITEMS=1000
 Environment=MINARTICLE=10
+Environment=PERSISTENCEINTERVAL=5
 # Environment=DEBUG=TRUE
 
 # Resources / security

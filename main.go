@@ -9,7 +9,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,21 +21,10 @@ var (
 	MINARTICLE          = 10
 	// Alle X Minuten die Datenstruktur im Speicher verkleinern
 	HOURSOLDERSINCEFETCH = 12
-	SERVER               = fmt.Sprintf("localhost:7777")
-	MCPSERVER            = fmt.Sprintf("localhost:13333")
+	SERVER               = "localhost:7777"
+	MCPSERVER            = "localhost:13333"
+	PERSISTENCEINTERVAL  = 5
 )
-
-type DebugWriter struct{}
-
-func (w *DebugWriter) Write(p []byte) (n int, err error) {
-	if os.Getenv("DEBUG") != "TRUE" {
-		return len(p), nil
-	}
-	msg := strings.TrimSpace(string(p))
-	fmt.Printf("Debug: %s\n", msg)
-
-	return len(p), nil
-}
 
 func main() {
 	srv := os.Getenv("SERVER")
@@ -53,6 +41,11 @@ func main() {
 	if err == nil {
 		WORKERCOUNT = wc
 	}
+	persistenceinterval := os.Getenv("PERSISTENCEINTERVAL")
+	pi, err := strconv.Atoi(persistenceinterval)
+	if err == nil {
+		PERSISTENCEINTERVAL = pi
+	}
 	halftime := os.Getenv("HALFTIME")
 	ht, err := strconv.Atoi(halftime)
 	if err == nil {
@@ -66,7 +59,12 @@ func main() {
 
 	var mu sync.RWMutex
 	var watermarkmu sync.RWMutex
-	hackerNewsItemsMap := make(map[int]*internal.Item)
+	persistence := internal.NewFsPeristence()
+	hackerNewsItemsMap, err := persistence.Fetch()
+	if err != nil {
+		hackerNewsItemsMap = make(internal.HNData)
+		log.Println("Fresh start")
+	}
 
 	articleInputChan := make(chan int, WORKERCOUNT)
 	defer close(articleInputChan)
@@ -83,18 +81,25 @@ func main() {
 	watermark := latestId - OLDARTICLELOADCOUNT
 	watermarkmu.Unlock()
 	go func() {
-		internal.RunHackernewsMcp(MCPSERVER, &hackerNewsItemsMap, &mu)
+		internal.RunHackernewsMcp(MCPSERVER, hackerNewsItemsMap, &mu)
 	}()
 
 	go func() {
 		waterMarkTicker := time.NewTicker(time.Second * 5)
 		itemShowTimer := time.NewTicker(time.Second * 15)
 		deleteOldItemsTimer := time.NewTicker(time.Minute * 5)
+		PersistenceTimer := time.NewTicker(time.Minute * time.Duration(PERSISTENCEINTERVAL))
 		for {
 			select {
 			case <-ctx.Done():
+				persistence.Store(hackerNewsItemsMap)
 				log.Println("Ending Application")
 				return
+			case <-PersistenceTimer.C:
+				mu.Lock()
+				persistence.Store(hackerNewsItemsMap)
+				mu.Unlock()
+
 			case <-waterMarkTicker.C:
 				latestId, err := f.NewestArticleID()
 				if err != nil {
@@ -209,6 +214,6 @@ func main() {
 	})
 	log.Printf("Starting DEBUG-Server on Port %v", SERVER)
 	log.Printf("Switching to DebugWriter - Set Environment-Variable DEBUG=TRUE for more Output %v", SERVER)
-	log.SetOutput(&DebugWriter{})
+	log.SetOutput(&internal.DebugWriter{})
 	log.Fatalln(http.ListenAndServe(SERVER, nil))
 }

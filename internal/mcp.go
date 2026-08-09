@@ -18,7 +18,7 @@ type HackernewsMcp struct {
 	data []*Item
 }
 
-func RunHackernewsMcp(mcpserver string, hackerNewsItemsMap *map[int]*Item, lock *sync.RWMutex) *HackernewsMcp {
+func RunHackernewsMcp(mcpserver string, hackerNewsItemsMap HNData, lock *sync.RWMutex) *HackernewsMcp {
 	s := server.NewMCPServer(
 		"Hackernews Server",
 		"0.0.1",
@@ -29,7 +29,7 @@ func RunHackernewsMcp(mcpserver string, hackerNewsItemsMap *map[int]*Item, lock 
 	return &HackernewsMcp{s: s}
 }
 
-func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[int]*Item, lock *sync.RWMutex) {
+func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData, lock *sync.RWMutex) {
 	hackernewsTool := mcp.NewTool("hackernews",
 		mcp.WithDescription("See the newest entries / articles at hackernews"),
 		mcp.WithString("filter",
@@ -73,7 +73,7 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[i
 			lock.RLock()
 			found := make([]CommentView, 0, len(want))
 			seen := make(map[int]struct{}, len(want))
-			for _, item := range *hackerNewsItemsMap {
+			for _, item := range hackerNewsItemsMap {
 				lookup := item.CommentLookup()
 				for id := range want {
 					if _, ok := seen[id]; ok {
@@ -98,7 +98,7 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[i
 		// via the comments parameter.
 		if storyId := request.GetInt("id", 0); storyId > 0 {
 			lock.RLock()
-			item, ok := (*hackerNewsItemsMap)[storyId]
+			item, ok := (hackerNewsItemsMap)[storyId]
 			lock.RUnlock()
 			if !ok {
 				return mcp.NewToolResultError(fmt.Sprintf("story id %d not in memory", storyId)), nil
@@ -126,9 +126,9 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[i
 		}
 
 		lock.RLock()
-		filtered := make([]*Item, 0, len(*hackerNewsItemsMap))
+		filtered := make([]*Item, 0, len(hackerNewsItemsMap))
 		now := time.Now()
-		for _, d := range *hackerNewsItemsMap {
+		for _, d := range hackerNewsItemsMap {
 			if d.Score < minScore {
 				continue
 			}
@@ -186,7 +186,7 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap *map[i
 	})
 	s.AddTool(hackernewsToolCount, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		lock.RLock()
-		res, err := json.Marshal(len(*hackerNewsItemsMap))
+		res, err := json.Marshal(len(hackerNewsItemsMap))
 		lock.RUnlock()
 		if err != nil {
 			return nil, err

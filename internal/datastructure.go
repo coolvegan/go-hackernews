@@ -1,15 +1,32 @@
 package internal
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
+
+type HNData map[int]*Item
 
 type ArticleSummary struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
 	Url   string `json:"url"`
 	Score int    `json:"score"`
+}
+
+type DebugWriter struct{}
+
+func (w *DebugWriter) Write(p []byte) (n int, err error) {
+	if os.Getenv("DEBUG") != "TRUE" {
+		return len(p), nil
+	}
+	msg := strings.TrimSpace(string(p))
+	fmt.Printf("Debug: %s\n", msg)
+
+	return len(p), nil
 }
 
 // ArticleView is the full item without the (potentially huge) embedded
