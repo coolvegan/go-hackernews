@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"sort"
@@ -65,6 +66,10 @@ func main() {
 		hackerNewsItemsMap = make(internal.HNData)
 		log.Println("Fresh start")
 	}
+	MAX_ID := -1
+	for k, _ := range hackerNewsItemsMap {
+		MAX_ID = int(math.Max(float64(MAX_ID), float64(k)))
+	}
 
 	articleInputChan := make(chan int, WORKERCOUNT)
 	defer close(articleInputChan)
@@ -79,11 +84,13 @@ func main() {
 	}
 	watermarkmu.Lock()
 	watermark := latestId - OLDARTICLELOADCOUNT
+	if MAX_ID != -1 {
+		watermark = MAX_ID
+	}
 	watermarkmu.Unlock()
 	go func() {
 		internal.RunHackernewsMcp(MCPSERVER, hackerNewsItemsMap, &mu)
 	}()
-	persistence.Store(hackerNewsItemsMap)
 	go func() {
 		waterMarkTicker := time.NewTicker(time.Second * 5)
 		itemShowTimer := time.NewTicker(time.Second * 15)
@@ -106,7 +113,7 @@ func main() {
 					continue
 				}
 				watermarkmu.Lock()
-				for aid := watermark + 1; aid <= latestId; aid++ {
+				for aid := latestId; aid > watermark; aid-- {
 					articleInputChan <- aid
 				}
 				watermark = latestId
