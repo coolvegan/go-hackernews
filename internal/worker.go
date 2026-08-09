@@ -91,6 +91,11 @@ func (f *Fetcher) InitWorker(jobs <-chan int, results chan<- WorkResult) {
 				}
 				wg.Wait()
 				log.Printf("Worker %d worked successfully on ItemID %d.\n", workerId, jobId)
+				if dataMap.Dead || dataMap.Id == 0 || (dataMap.Url == "" && dataMap.Title == "") {
+					log.Printf("Worker %d ignores job %d\n", workerId, jobId)
+					// log.Printf("Worker %d ignoriert Job %d - Child[%v] Dead[%v] ZeroId[%v]", workerId, jobId, dataMap.Parent != 0, dataMap.Dead, dataMap.Id == 0)
+					continue
+				}
 				results <- WorkResult{Item: *dataMap, Err: err}
 
 			}
