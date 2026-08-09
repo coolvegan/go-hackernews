@@ -442,16 +442,18 @@
   <div id="hint">← → oder Swipe · zeigt nächsten / vorherigen Thread</div>
 
   <script>
-    const API_URL = '/api/items';
+    const KEYS_URL = '/api/itemkeys';
+    const ITEM_URL = '/api/item';
     const POLL_INTERVAL_MS = 3000; // Intervall für automatisches Nachladen
 
     // true  = neue Daten werden automatisch übernommen (aktuelles Verhalten)
     // false = neue Daten werden erst nach Klick auf den Update-Banner übernommen
     const AUTO_REFRESH = false;
 
-    let rootItems = [];   // aktuell geladene Root-Threads
+    let keys = [];            // absteigend sortierte IDs vom Backend
     let currentIndex = 0;
-    let pendingData = null;   // im manuellen Modus: bereits geladene, aber noch nicht angezeigte Daten
+    let currentItem = null;   // aktuell angezeigtes Item
+    let pendingKeys = null;   // im manuellen Modus: neue Keys, die noch nicht übernommen wurden
     let hasLoadedOnce = false; // der allererste Ladevorgang wird immer sofort angezeigt
 
     const viewport = document.getElementById('viewport');
@@ -553,9 +555,9 @@
       banner.innerText = 'Update verfügbar';
       banner.onclick = () => {
         banner.remove();
-        if (pendingData !== null) {
-          renderItems(pendingData);
-          pendingData = null;
+        if (pendingKeys !== null) {
+          applyKeys(pendingKeys);
+          pendingKeys = null;
         }
       };
       document.body.appendChild(banner);
@@ -628,42 +630,10 @@
       return item;
     }
 
-    function buildTree(itemsInput) {
-      // Backend liefert jetzt eine Map {"<id>": item, ...} statt einer Liste.
-      // Array.isArray-Check hält die Funktion trotzdem kompatibel, falls sich
-      // das Format nochmal ändert oder für Debugging/Tests ein Array kommt.
-      const rawList = Array.isArray(itemsInput) ? itemsInput : Object.values(itemsInput || {});
-      const valid = rawList.filter(item => item && item.id !== 0);
-
-      // Neues Format: jedes Item bringt seine Kommentare bereits rekursiv
-      // verschachtelt im Feld "Comments" mit (statt einer flachen Liste mit
-      // "parent"-Verknüpfung). Erkennen wir dieses Feld, nutzen wir es direkt.
-      const hasNestedFormat = valid.some(item => 'Comments' in item);
-
-      let roots;
-      if (hasNestedFormat) {
-        roots = valid.map(normalizeNestedComments);
-      } else {
-        // Altes Format: flache Liste, Verknüpfung über item.parent
-        const itemMap = new Map();
-        valid.forEach(item => {item.children = []; itemMap.set(item.id, item);});
-        roots = [];
-        valid.forEach(item => {
-          if (item.parent !== 0 && itemMap.has(item.parent)) {
-            itemMap.get(item.parent).children.push(item);
-          } else {
-            roots.push(item);
-          }
-        });
-        valid.forEach(item => {
-          if (item.children.length > 1) {
-            item.children.sort((a, b) => (a.time || 0) - (b.time || 0));
-          }
-        });
-      }
-
-      roots.sort((a, b) => (b.time || 0) - (a.time || 0));
-      return roots;
+    function buildTree(item) {
+      if (!item || item.id === 0) return null;
+      normalizeNestedComments(item);
+      return item;
     }
 
     function renderMessage(html) {
@@ -682,7 +652,7 @@
     }
 
     function updateProgress() {
-      const total = rootItems.length;
+      const total = keys.length;
       progressEl.innerHTML =
         `<span class="idx">${String(currentIndex + 1).padStart(2, '0')}</span> / ${String(total).padStart(2, '0')} <span class="bar">${progressBar(currentIndex, total)}</span>`;
       btnFirst.disabled = currentIndex <= 0;
@@ -694,15 +664,21 @@
     let isTransitioning = false;
 
     function renderCurrent(direction) {
-      const total = rootItems.length;
+      const total = keys.length;
       if (total === 0) {
-        renderMessage('<div class="msg">Keine gültigen Items vorhanden.</div>');
+        renderMessage('<div class="msg">Keine gültigen IDs vorhanden.</div>');
         return;
       }
       if (currentIndex < 0) currentIndex = 0;
       if (currentIndex > total - 1) currentIndex = total - 1;
 
-      const html = rootHTML(rootItems[currentIndex]);
+      if (!currentItem) {
+        renderMessage('<div class="msg">Lade Item<span class="glow">…</span></div>');
+        loadCurrentItem();
+        return;
+      }
+
+      const html = rootHTML(currentItem);
 
       // Auto-Refresh (kein direction, z.B. durch Polling): bestehendes Slide
       // in-place aktualisieren statt neu zu erzeugen, damit die Scroll-Position
@@ -755,24 +731,80 @@
     }
 
     function goTo(index, direction) {
-      if (rootItems.length === 0) return;
+      if (keys.length === 0) return;
       if (direction && isTransitioning) return; // Übergang läuft noch, Eingabe ignorieren
-      const clamped = Math.max(0, Math.min(rootItems.length - 1, index));
+      const clamped = Math.max(0, Math.min(keys.length - 1, index));
       if (clamped === currentIndex && direction) return;
       currentIndex = clamped;
+      currentItem = null;
       renderCurrent(direction);
     }
 
-    function renderItems(items) {
-      const roots = buildTree(items);
-      rootItems = roots;
-      if (currentIndex > roots.length - 1) currentIndex = Math.max(0, roots.length - 1);
-      renderCurrent(null);
+    function loadCurrentItem() {
+      const id = keys[currentIndex];
+      if (!id) return;
+      statusline.textContent = 'lade item…';
+      fetch(`${ITEM_URL}/${id}?t=${Date.now()}`, {cache: 'no-store'})
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.text();
+        })
+        .then(text => {
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            try {
+              data = JSON.parse(sanitizeJsonText(text));
+            } catch (e2) {
+              throw new Error("JSON parsing fehlgeschlagen: " + e2.message);
+            }
+          }
+          currentItem = buildTree(data);
+          renderCurrent(null);
+          statusline.innerHTML = '<span class="ok">● verbunden</span>';
+        })
+        .catch(err => {
+          console.error(err);
+          renderMessage(`<div class="msg" style="color:var(--amber-dead)">Fehler beim Laden des Items: ${err.message}</div>`);
+          statusline.innerHTML = '<span style="color:var(--amber-dead)">● Fehler</span>';
+        });
     }
 
-    function fetchItems() {
-      const url = API_URL + '?t=' + Date.now();
-      statusline.textContent = 'lade…';
+    function applyKeys(newKeys) {
+      const prevId = keys[currentIndex];
+      keys = newKeys;
+      if (currentIndex > keys.length - 1) currentIndex = Math.max(0, keys.length - 1);
+
+      const newId = keys[currentIndex];
+      if (!currentItem || currentItem.id !== newId) {
+        currentItem = null;
+        renderCurrent(null);
+        return;
+      }
+
+      // Gleiche ID am gleichen Index: Item im Hintergrund neu laden, damit
+      // Score/Kommentare aktuell bleiben, aber ohne die Scroll-Position zu
+      // stören. renderCurrent ohne direction aktualisiert in-place.
+      fetch(`${ITEM_URL}/${newId}?t=${Date.now()}`, {cache: 'no-store'})
+        .then(res => res.ok ? res.text() : null)
+        .then(text => {
+          if (!text) return;
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            try {data = JSON.parse(sanitizeJsonText(text));} catch {return;}
+          }
+          currentItem = buildTree(data);
+          renderCurrent(null);
+        })
+        .catch(() => { });
+    }
+
+    function fetchKeys() {
+      const url = KEYS_URL + '?t=' + Date.now();
+      statusline.textContent = 'lade keys…';
 
       fetch(url, {cache: 'no-store'})
         .then(res => res.text())
@@ -787,18 +819,21 @@
               throw new Error("JSON parsing fehlgeschlagen: " + e2.message);
             }
           }
+          if (!Array.isArray(data)) {
+            throw new Error('Ungültiges Format: /api/itemkeys muss ein Array liefern');
+          }
           if (!hasLoadedOnce || AUTO_REFRESH) {
             // Erster Ladevorgang läuft immer sofort durch, egal welcher Modus
             // aktiv ist - sonst sähe man beim Start ja nichts.
             hasLoadedOnce = true;
-            pendingData = null;
+            pendingKeys = null;
             hideUpdateBanner();
-            renderItems(data);
+            applyKeys(data);
           } else {
-            // Manueller Modus: Daten sind da, werden aber erst nach Klick
+            // Manueller Modus: Keys sind da, werden aber erst nach Klick
             // auf den Banner übernommen (Scroll-Position etc. bleiben so
             // lange unangetastet).
-            pendingData = data;
+            pendingKeys = data;
             showUpdateBanner();
           }
           statusline.innerHTML = '<span class="ok">● verbunden</span>';
@@ -841,12 +876,13 @@
     btnFirst.addEventListener('click', () => goTo(0, 'left'));
     btnPrev.addEventListener('click', () => goTo(currentIndex - 1, 'left'));
     btnNext.addEventListener('click', () => goTo(currentIndex + 1, 'right'));
-    btnLast.addEventListener('click', () => goTo(rootItems.length - 1, 'right'));
+    btnLast.addEventListener('click', () => goTo(keys.length - 1, 'right'));
 
-    // Initial starten – lädt sofort und danach im festen Intervall neu,
-    // unabhängig von einem separaten Watermark-Endpunkt
-    fetchItems();
-    setInterval(fetchItems, POLL_INTERVAL_MS);
+    // Initial starten – lädt sofort die ID-Liste und danach im festen Intervall neu,
+    // unabhängig von einem separaten Watermark-Endpunkt. Das aktuelle Item wird
+    // nur bei Bedarf einzeln über /api/item/{id} geladen.
+    fetchKeys();
+    setInterval(fetchKeys, POLL_INTERVAL_MS);
   </script>
 
 </body>

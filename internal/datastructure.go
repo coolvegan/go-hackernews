@@ -16,17 +16,17 @@ type ArticleSummary struct {
 // comment tree. CommentCount replaces the recursive Comments field so a
 // "full" result stays small no matter how many comments a story has.
 type ArticleView struct {
-	Id           int                     `json:"id"`
-	Score        int                     `json:"score"`
-	Time         int64                   `json:"time"`
-	Title        string                  `json:"title"`
-	Text         string                  `json:"text"`
-	Type         string                  `json:"type"`
-	By           string                  `json:"by"`
-	Url          string                  `json:"url"`
-	Parent       int                     `json:"parent"`
-	Dead         bool                    `json:"dead"`
-	CommentCount int `json:"comment_count"`
+	Id           int    `json:"id"`
+	Score        int    `json:"score"`
+	Time         int64  `json:"time"`
+	Title        string `json:"title"`
+	Text         string `json:"text"`
+	Type         string `json:"type"`
+	By           string `json:"by"`
+	Url          string `json:"url"`
+	Parent       int    `json:"parent"`
+	Dead         bool   `json:"dead"`
+	CommentCount int    `json:"comment_count"`
 	// Comments maps a parent id to its direct child comment ids (no text).
 	// The story id is the key for top-level comments, each comment id is the
 	// key for its replies. Text is fetched separately via the comments tool.
