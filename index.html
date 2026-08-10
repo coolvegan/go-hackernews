@@ -444,11 +444,11 @@
   <script>
     const KEYS_URL = '/api/itemkeys';
     const ITEM_URL = '/api/item';
-    const POLL_INTERVAL_MS = 3000; // Intervall für automatisches Nachladen
+    const POLL_INTERVAL_MS = 30000; // Intervall für automatisches Nachladen
 
     // true  = neue Daten werden automatisch übernommen (aktuelles Verhalten)
     // false = neue Daten werden erst nach Klick auf den Update-Banner übernommen
-    const AUTO_REFRESH = false;
+    const AUTO_REFRESH = true;
 
     let keys = [];            // absteigend sortierte IDs vom Backend
     let currentIndex = 0;

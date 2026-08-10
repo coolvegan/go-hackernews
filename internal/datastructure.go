@@ -9,6 +9,7 @@ import (
 )
 
 type HNData map[int]*Item
+type Worklog map[int]struct{}
 
 type ArticleSummary struct {
 	Title string `json:"title"`
@@ -127,14 +128,14 @@ type Fetcher struct {
 	downloadComments bool
 	jobs             chan int
 	results          chan WorkResult
-	worklog          map[int]struct{}
+	worklog          Worklog
 	wrklmu           sync.RWMutex
 }
 
 func NewFetcher(workerCount int) *Fetcher {
 	jobs := make(chan int, workerCount)
 	results := make(chan WorkResult, workerCount)
-	worklog := make(map[int]struct{})
+	worklog := make(Worklog)
 	f := Fetcher{itemsUri: ITEMSURL, topstoryUri: TOPSTORIES, newestIdUri: MAXITEMURL, workerCount: workerCount, downloadComments: true, jobs: jobs, results: results, worklog: worklog}
 	f.InitWorker(jobs, results)
 	return &f
