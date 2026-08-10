@@ -43,6 +43,10 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData
 		mcp.WithNumber("limit",
 			mcp.Description("Return at most N articles, highest score first"),
 		),
+		mcp.WithString("sort",
+			mcp.Description("Sort order: 'score' (default, highest first) or 'newest' (latest first)"),
+			mcp.Enum("score", "newest"),
+		),
 		mcp.WithNumber("id",
 			mcp.Description("Story id; returns that story's comment structure as parent-id -> []child ids (no text). Use the returned comment ids with the 'comments' parameter to fetch their text."),
 		),
@@ -62,6 +66,7 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData
 		minScore := request.GetInt("minScore", 0)
 		maxAgeMinutes := request.GetInt("maxAgeMinutes", 0)
 		limit := request.GetInt("limit", 0)
+		sortBy := request.GetString("sort", "score")
 
 		// Comments-by-text: fetch the text for explicitly requested comment
 		// ids. Comments live in their story's tree, so we scan all items once.
@@ -139,10 +144,8 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData
 		}
 		lock.RUnlock()
 
-		// Highest score first, then optionally limit the result set.
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].Score > filtered[j].Score
-		})
+		// Sort by score (highest first) by default; optionally by newest first.
+		sortArticles(filtered, sortBy)
 		if limit > 0 && len(filtered) > limit {
 			filtered = filtered[:limit]
 		}
@@ -201,4 +204,15 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData
 	if err := sseServer.Start(fmt.Sprintf("%s", mcpserver)); err != nil {
 		log.Fatalf("Server-Error: %v", err)
 	}
+}
+
+// sortArticles orders items in place. "newest" sorts by post time
+// (latest first); any other value sorts by score (highest first), the default.
+func sortArticles(items []*Item, sortBy string) {
+	sort.Slice(items, func(i, j int) bool {
+		if sortBy == "newest" {
+			return items[i].Time > items[j].Time
+		}
+		return items[i].Score > items[j].Score
+	})
 }
