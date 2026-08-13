@@ -154,7 +154,7 @@ func initialize(s *server.MCPServer, mcpserver string, hackerNewsItemsMap HNData
 		case "summary":
 			summary := make([]ArticleSummary, 0, len(filtered))
 			for _, d := range filtered {
-				summary = append(summary, ArticleSummary{Title: d.Title, Text: d.Text, Url: d.Url, Score: d.Score})
+				summary = append(summary, ArticleSummary{Id: d.Id, Title: d.Title, Text: d.Text, Url: d.Url, Score: d.Score})
 			}
 			res, err := json.Marshal(summary)
 			if err != nil {

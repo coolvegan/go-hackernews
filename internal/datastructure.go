@@ -12,6 +12,7 @@ type HNData map[int]*Item
 type Worklog map[int]struct{}
 
 type ArticleSummary struct {
+	Id    int    `json:"id"`
 	Title string `json:"title"`
 	Text  string `json:"text"`
 	Url   string `json:"url"`
